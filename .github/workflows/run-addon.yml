@@ -1,0 +1,11 @@
+
+name: Run Add-On
+on:
+  workflow_dispatch:
+  schedule:
+    # Run at 17 past the hour, every hour, Monday through Friday
+    - cron:  "17 * * * 1-5"
+
+jobs:
+  Run-Add-On:
+    uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
