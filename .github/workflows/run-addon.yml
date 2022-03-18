@@ -8,6 +8,6 @@ on:
 
 jobs:
   Run-Add-On:
-    uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@main
+    uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
     with:
-      git-commit: false
+      git-commit: true
