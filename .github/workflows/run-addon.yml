@@ -3,9 +3,23 @@ name: Run Add-On
 on:
   workflow_dispatch:
   schedule:
-    # Run at 17 past the hour, every hour, Monday through Friday
-    - cron:  "17 * * * 1-5"
+    # Run at 1:22 AM every day
+    - cron:  "22 1 * * *"
 
 jobs:
   Run-Add-On:
-    uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
+    - uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
+
+  Commit-Changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [Run-Add-On]
+    steps:
+      - name: Commit and push if it changed
+        run: |-
+          git config user.name "Automated"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          timestamp=$(date -u)
+          git commit -m "Latest data: ${timestamp}" || exit 0
+          git push
