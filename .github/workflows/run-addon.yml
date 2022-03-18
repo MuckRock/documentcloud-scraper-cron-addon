@@ -3,8 +3,8 @@ name: Run Add-On
 on:
   workflow_dispatch:
   schedule:
-    # Run at 1:22 AM every day
-    - cron:  "22 1 * * *"
+    # Run at 22 minutes past the hour, every hour, every day
+    - cron:  "22 * * * *"
 
 jobs:
   Run-Add-On:
