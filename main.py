@@ -20,6 +20,8 @@ SITE = "https://www.ssa.gov/foia/readingroom.html"
 PROJECT = 207338
 # keywords to generate additional notifications for
 KEYWORDS = ["court", "foia"]
+# file types to scrape
+FILETYPES = (".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt")
 
 
 def title(url):
@@ -63,7 +65,7 @@ class Scraper(CronAddOn):
         now = datetime.now().isoformat()
         for link in soup.find_all("a"):
             href = link.get("href")
-            if href.endswith(".pdf"):
+            if href.endswith(FILETYPES):
                 doc = urlparse.urljoin(resp.url, href)
                 # track when we first and last saw this document
                 # on this page
