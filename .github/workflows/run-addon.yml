@@ -10,4 +10,4 @@ jobs:
   Run-Add-On:
     uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@main
     with:
-      git-commit: true
+      git-commit: false
