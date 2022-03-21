@@ -6,6 +6,9 @@ on:
     # Run at 22 minutes past the hour, every hour, every day
     - cron:  "22 * * * *"
 
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
 jobs:
   Run-Add-On:
     uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
