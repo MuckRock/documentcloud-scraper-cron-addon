@@ -11,3 +11,6 @@ jobs:
     uses: Muckrock/documentcloud-addon-workflows/.github/workflows/run-addon.yml@v1
     with:
       git-commit: true
+    secrets:
+      dc_username: ${{ secrets.DC_USERNAME }}
+      dc_password: ${{ secrets.DC_PASSWORD }}
