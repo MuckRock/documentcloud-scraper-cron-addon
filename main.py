@@ -17,19 +17,6 @@ from documentcloud.toolbox import grouper
 
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
 
-# the site to scrape
-SITE = "https://www.ssa.gov/foia/readingroom.html"
-# the project to upload documents into
-PROJECT = 207338
-# keywords to generate additional notifications for
-KEYWORDS = ["court", "foia"]
-# file types to scrape
-FILETYPES = (".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt")
-# How many links to follow while crawling
-CRAWL_DEPTH = 1
-# Do not upload documents or store results
-DRY_RUN = False
-
 
 def title(url):
     """Get the base name of the file to use as a title"""
@@ -59,7 +46,7 @@ class Scraper(CronAddOn):
 
     def store_data(self, data):
         """Store data to be checked in to the repository"""
-        if DRY_RUN:
+        if self.data["dry_run"]:
             return
         with open("data.json", "w") as file_:
             json.dump(data, file_, indent=2, sort_keys=True)
@@ -78,7 +65,7 @@ class Scraper(CronAddOn):
         content = cgi.parse_header(resp.headers["Content-Type"])[0]
         return content == "text/html"
 
-    def scrape(self, site=SITE, depth=0):
+    def scrape(self, site, depth=0):
         """Scrape the site for new documents"""
         print(f"Scraping {site} (depth {depth})")
         resp = requests.get(site)
@@ -92,15 +79,15 @@ class Scraper(CronAddOn):
             if href is None:
                 continue
             full_href = urlparse.urljoin(resp.url, href)
-            if href.endswith(FILETYPES):
+            if href.endswith(tuple(self.data["filetypes"])):
                 # track when we first and last saw this document
                 # on this page
-                if full_href not in self.data:
+                if full_href not in self.site_data:
                     # only download if haven't seen before
                     docs.append(full_href)
-                    self.data[full_href] = {"first_seen": now}
-                self.data[full_href]["last_seen"] = now
-            elif depth < CRAWL_DEPTH:
+                    self.site_data[full_href] = {"first_seen": now}
+                self.site_data[full_href]["last_seen"] = now
+            elif depth < self.data["crawl_depth"]:
                 # if not a document, check to see if we should crawl
                 if self.check_crawl(full_href):
                     sites.append(full_href)
@@ -114,17 +101,17 @@ class Scraper(CronAddOn):
                     "file_url": url_fix(d),
                     "source": f"Scraped from {site}",
                     "title": title(d),
-                    "projects": [PROJECT],
+                    "projects": [self.data["project"]],
                 }
                 for d in doc_group
             ]
             # do a bulk upload
-            if not DRY_RUN:
+            if not self.data["dry_run"]:
                 resp = self.client.post("documents/", json=doc_group)
 
         # recurse on sites we want to crawl
         for site_ in sites:
-            self.scrape(site_, depth=depth+1)
+            self.scrape(site_, depth=depth + 1)
 
     def send_notification(self, subject, message):
         """Send notifications via slack and email"""
@@ -140,36 +127,38 @@ class Scraper(CronAddOn):
                 msg.extend(docs)
         if msg:
             self.send_notification(
-                f"Found new documents from {SITE}", "\n".join(msg)
+                f"Found new documents from {self.data['site']}", "\n".join(msg)
             )
 
     def alert(self):
         """Run queries for the keywords to generate additional alerts"""
-        for keyword in KEYWORDS:
-            query = f"+project:{PROJECT} {keyword} created_at:[NOW-1HOUR TO *]"
+        for keyword in self.data["keywords"]:
+            query = (
+                f"+project:{self.data['project']} {keyword} created_at:[NOW-1HOUR TO *]"
+            )
             documents = self.client.documents.search(query)
             documents = list(documents)
             if documents:
                 message = [
                     f"Documents containing {keyword} found at {datetime.now()} "
-                    f"from {SITE}"
+                    f"from {self.data['site']}"
                 ]
                 message.extend([f"{d.title} - {d.canonical_url}" for d in documents])
                 self.send_notification(
-                    f"New documents found for: {keyword} from {SITE}",
+                    f"New documents found for: {keyword} from {self.data['site']}",
                     "\n".join(message),
                 )
 
     def main(self):
         # grab the base of the URL to stay on site during crawling
-        _scheme, netloc, _path, _qs, _anchor = urlparse.urlsplit(SITE)
+        _scheme, netloc, _path, _qs, _anchor = urlparse.urlsplit(self.data["site"])
         self.base_netloc = netloc
         self.seen = set()
         self.new_docs = {}
 
-        self.data = self.load_data()
-        self.scrape()
-        self.store_data(self.data)
+        self.site_data = self.load_data()
+        self.scrape(self.data["site"])
+        self.store_data(self.site_data)
         self.send_scrape_message()
 
         self.alert()
