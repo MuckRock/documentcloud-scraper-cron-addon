@@ -15,6 +15,8 @@ from documentcloud.addon import CronAddOn
 from documentcloud.constants import BULK_LIMIT
 from documentcloud.toolbox import grouper
 
+SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
+
 # the site to scrape
 SITE = "https://www.ssa.gov/foia/readingroom.html"
 # the project to upload documents into
@@ -124,6 +126,12 @@ class Scraper(CronAddOn):
         for site_ in sites:
             self.scrape(site_, depth=depth+1)
 
+    def send_notification(self, subject, message):
+        """Send notifications via slack and email"""
+        self.send_mail(subject, message)
+        if SLACK_WEBHOOK:
+            requests.post(SLACK_WEBHOOK, json={"text": f"{subject}\n\n{message}"})
+
     def send_scrape_message(self):
         msg = []
         for site, docs in self.new_docs.items():
@@ -131,7 +139,7 @@ class Scraper(CronAddOn):
                 msg.append(f"\n\nFound {len(docs)} new documents from {site}\n")
                 msg.extend(docs)
         if msg:
-            self.send_mail(
+            self.send_notification(
                 f"Found new documents from {SITE}", "\n".join(msg)
             )
 
@@ -147,7 +155,7 @@ class Scraper(CronAddOn):
                     f"from {SITE}"
                 ]
                 message.extend([f"{d.title} - {d.canonical_url}" for d in documents])
-                self.send_mail(
+                self.send_notification(
                     f"New documents found for: {keyword} from {SITE}",
                     "\n".join(message),
                 )
