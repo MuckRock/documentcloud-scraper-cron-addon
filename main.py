@@ -3,6 +3,7 @@ This add-on will monitor a website for documents and upload them to your Documen
 """
 
 
+import cgi
 import json
 import os
 import urllib.parse as urlparse
@@ -22,6 +23,10 @@ PROJECT = 207338
 KEYWORDS = ["court", "foia"]
 # file types to scrape
 FILETYPES = (".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt")
+# How many links to follow while crawling
+CRAWL_DEPTH = 1
+# Do not upload documents or store results
+DRY_RUN = False
 
 
 def title(url):
@@ -52,50 +57,81 @@ class Scraper(CronAddOn):
 
     def store_data(self, data):
         """Store data to be checked in to the repository"""
+        if DRY_RUN:
+            return
         with open("data.json", "w") as file_:
             json.dump(data, file_, indent=2, sort_keys=True)
 
-    def scrape(self):
+    def check_crawl(self, url):
+        # check if it is from the same site
+        scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
+        if netloc != self.base_netloc:
+            return False
+        # do not crawl the same site more than once
+        if url in self.seen:
+            return False
+        self.seen.add(url)
+        # do a head request to check for HTML
+        resp = requests.head(url, allow_redirects=True)
+        content = cgi.parse_header(resp.headers["Content-Type"])[0]
+        return content == "text/html"
+
+    def scrape(self, site=SITE, depth=0):
         """Scrape the site for new documents"""
-        resp = requests.get(SITE)
+        print(f"Scraping {site} (depth {depth})")
+        resp = requests.get(site)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
         docs = []
-        data = self.load_data()
+        sites = []
         now = datetime.now().isoformat()
         for link in soup.find_all("a"):
             href = link.get("href")
+            full_href = urlparse.urljoin(resp.url, href)
             if href.endswith(FILETYPES):
-                doc = urlparse.urljoin(resp.url, href)
                 # track when we first and last saw this document
                 # on this page
-                if doc not in data:
+                if full_href not in self.data:
                     # only download if haven't seen before
-                    docs.append(doc)
-                    data[doc] = {"first_seen": now}
-                data[doc]["last_seen"] = now
+                    docs.append(full_href)
+                    self.data[full_href] = {"first_seen": now}
+                self.data[full_href]["last_seen"] = now
+            elif depth < CRAWL_DEPTH:
+                # if not a document, check to see if we should crawl
+                if self.check_crawl(full_href):
+                    sites.append(full_href)
 
-        print(f"Found {len(docs)} new documents")
-        if docs:
-            self.send_mail(
-                f"Found {len(docs)} new documents from {SITE}", "\n".join(docs)
-            )
+        self.new_docs[site] = docs
         for doc_group in grouper(docs, BULK_LIMIT):
             # filter out None's from grouper padding
             doc_group = [d for d in doc_group if d]
             doc_group = [
                 {
                     "file_url": url_fix(d),
-                    "source": f"Scraped from {SITE}",
+                    "source": f"Scraped from {site}",
                     "title": title(d),
                     "projects": [PROJECT],
                 }
                 for d in doc_group
             ]
             # do a bulk upload
-            resp = self.client.post("documents/", json=doc_group)
+            if not DRY_RUN:
+                resp = self.client.post("documents/", json=doc_group)
 
-        self.store_data(data)
+        # recurse on sites we want to crawl
+        for site_ in sites:
+            self.scrape(site_, depth=depth+1)
+
+    def send_scrape_message(self):
+        msg = []
+        for site, docs in self.new_docs.items():
+            if docs:
+                msg.append(f"\n\nFound {len(docs)} new documents from {site}\n")
+                msg.extend(docs)
+        if msg:
+            self.send_mail(
+                f"Found new documents from {SITE}", "\n".join(msg)
+            )
 
     def alert(self):
         """Run queries for the keywords to generate additional alerts"""
@@ -115,7 +151,17 @@ class Scraper(CronAddOn):
                 )
 
     def main(self):
+        # grab the base of the URL to stay on site during crawling
+        _scheme, netloc, _path, _qs, _anchor = urlparse.urlsplit(SITE)
+        self.base_netloc = netloc
+        self.seen = set()
+        self.new_docs = {}
+
+        self.data = self.load_data()
         self.scrape()
+        self.store_data(self.data)
+        self.send_scrape_message()
+
         self.alert()
 
 
