@@ -76,7 +76,10 @@ class Scraper(CronAddOn):
                 data[doc]["last_seen"] = now
 
         print(f"Found {len(docs)} new documents")
-        self.send_mail(f"Found {len(docs)} new documents from {SITE}", "\n".join(docs))
+        if docs:
+            self.send_mail(
+                f"Found {len(docs)} new documents from {SITE}", "\n".join(docs)
+            )
         for doc_group in grouper(docs, BULK_LIMIT):
             # filter out None's from grouper padding
             doc_group = [d for d in doc_group if d]
