@@ -87,6 +87,8 @@ class Scraper(CronAddOn):
         now = datetime.now().isoformat()
         for link in soup.find_all("a"):
             href = link.get("href")
+            if href is None:
+                continue
             full_href = urlparse.urljoin(resp.url, href)
             if href.endswith(FILETYPES):
                 # track when we first and last saw this document
