@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from documentcloud.addon import CronAddOn
 from documentcloud.constants import BULK_LIMIT
 from documentcloud.toolbox import grouper
+from ratelimit import limits, sleep_and_retry
 
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
 DOC_CUTOFF = 10
@@ -64,6 +65,8 @@ class Scraper(CronAddOn):
         self.seen.add(url)
         return content_type == "text/html"
 
+    @sleep_and_retry
+    @limits(calls=2, period=1)
     def get_content_type(self, url):
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if scheme not in ["http", "https"]:
@@ -71,6 +74,8 @@ class Scraper(CronAddOn):
         resp = requests.head(url, allow_redirects=True)
         return cgi.parse_header(resp.headers["Content-Type"])[0]
 
+    @sleep_and_retry
+    @limits(calls=2, period=1)
     def scrape(self, site, depth=0):
         """Scrape the site for new documents"""
         print(f"Scraping {site} (depth {depth})")
