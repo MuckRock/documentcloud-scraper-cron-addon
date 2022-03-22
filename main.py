@@ -52,6 +52,16 @@ class Document:
         root, _ext = os.path.splitext(basename)
         return root
 
+    @property
+    def extension(self):
+        if "Content-Type" not in self.headers:
+            return "pdf"
+        content_type = cgi.parse_header(self.headers["Content-Type"])[0]
+        extension = mimetypes.guess_extension(content_type)
+        if extension:
+            return extension.strip(".")
+        return "pdf"
+
     # https://stackoverflow.com/questions/33049729/
     # how-to-handle-links-containing-space-between-them-in-python
     @property
@@ -155,6 +165,7 @@ class Scraper(CronAddOn):
                     "source": f"Scraped from {site}",
                     "title": d.title,
                     "projects": [self.data["project"]],
+                    "original_extension": d.extension,
                 }
                 for d in doc_group
             ]
