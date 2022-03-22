@@ -5,6 +5,7 @@ This add-on will monitor a website for documents and upload them to your Documen
 
 import cgi
 import json
+import mimetypes
 import os
 import urllib.parse as urlparse
 from datetime import datetime
@@ -52,7 +53,7 @@ class Scraper(CronAddOn):
         with open("data.json", "w") as file_:
             json.dump(data, file_, indent=2, sort_keys=True)
 
-    def check_crawl(self, url):
+    def check_crawl(self, url, content_type):
         # check if it is from the same site
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if netloc != self.base_netloc:
@@ -61,10 +62,14 @@ class Scraper(CronAddOn):
         if url in self.seen:
             return False
         self.seen.add(url)
-        # do a head request to check for HTML
+        return content_type == "text/html"
+
+    def get_content_type(self, url):
+        scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
+        if scheme not in ["http", "https"]:
+            return ""
         resp = requests.head(url, allow_redirects=True)
-        content = cgi.parse_header(resp.headers["Content-Type"])[0]
-        return content == "text/html"
+        return cgi.parse_header(resp.headers["Content-Type"])[0]
 
     def scrape(self, site, depth=0):
         """Scrape the site for new documents"""
@@ -80,17 +85,20 @@ class Scraper(CronAddOn):
             if href is None:
                 continue
             full_href = urlparse.urljoin(resp.url, href)
-            if href.endswith(tuple(self.data["filetypes"])):
+            content_type = self.get_content_type(full_href)
+            # if this is a document type, store it
+            if content_type in self.content_types:
                 # track when we first and last saw this document
                 # on this page
                 if full_href not in self.site_data:
                     # only download if haven't seen before
+                    print("scraping", full_href)
                     docs.append(full_href)
                     self.site_data[full_href] = {"first_seen": now}
                 self.site_data[full_href]["last_seen"] = now
             elif depth < self.data["crawl_depth"]:
                 # if not a document, check to see if we should crawl
-                if self.check_crawl(full_href):
+                if self.check_crawl(full_href, content_type):
                     sites.append(full_href)
 
         self.new_docs[site] = docs
@@ -162,6 +170,7 @@ class Scraper(CronAddOn):
         self.base_netloc = netloc
         self.seen = set()
         self.new_docs = {}
+        self.content_types = [mimetypes.types_map[f] for f in self.data["filetypes"]]
 
         self.site_data = self.load_data()
         self.scrape(self.data["site"])
@@ -172,4 +181,5 @@ class Scraper(CronAddOn):
 
 
 if __name__ == "__main__":
+    mimetypes.init()
     Scraper().main()
