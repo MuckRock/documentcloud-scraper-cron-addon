@@ -10,11 +10,10 @@ import os
 import urllib.parse as urlparse
 from datetime import datetime
 
-import requests
 from bs4 import BeautifulSoup
 from documentcloud.addon import CronAddOn
 from documentcloud.constants import BULK_LIMIT
-from documentcloud.toolbox import grouper
+from documentcloud.toolbox import grouper, requests_retry_session
 from ratelimit import limits, sleep_and_retry
 
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
@@ -71,7 +70,7 @@ class Scraper(CronAddOn):
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if scheme not in ["http", "https"]:
             return ""
-        resp = requests.head(url, allow_redirects=True)
+        resp = requests_retry_session().head(url, allow_redirects=True)
         return cgi.parse_header(resp.headers["Content-Type"])[0]
 
     @sleep_and_retry
@@ -79,7 +78,7 @@ class Scraper(CronAddOn):
     def scrape(self, site, depth=0):
         """Scrape the site for new documents"""
         print(f"Scraping {site} (depth {depth})")
-        resp = requests.get(site)
+        resp = requests_retry_session().get(site)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
         docs = []
@@ -91,13 +90,14 @@ class Scraper(CronAddOn):
                 continue
             full_href = urlparse.urljoin(resp.url, href)
             content_type = self.get_content_type(full_href)
+            print("link", href, content_type)
             # if this is a document type, store it
             if content_type in self.content_types:
                 # track when we first and last saw this document
                 # on this page
                 if full_href not in self.site_data:
                     # only download if haven't seen before
-                    print("scraping", full_href)
+                    print("found new docs", full_href)
                     docs.append(full_href)
                     self.site_data[full_href] = {"first_seen": now}
                 self.site_data[full_href]["last_seen"] = now
@@ -131,7 +131,7 @@ class Scraper(CronAddOn):
         """Send notifications via slack and email"""
         self.send_mail(subject, message)
         if SLACK_WEBHOOK:
-            requests.post(SLACK_WEBHOOK, json={"text": f"{subject}\n\n{message}"})
+            requests_retry_session().post(SLACK_WEBHOOK, json={"text": f"{subject}\n\n{message}"})
 
     def send_scrape_message(self):
         msg = []
