@@ -19,6 +19,7 @@ from ratelimit import limits, sleep_and_retry
 
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
 DOC_CUTOFF = 10
+MAX_NEW_DOCS = 100
 
 
 class Document:
@@ -36,7 +37,7 @@ class Document:
         return self.title_from_url()
 
     def title_from_headers(self):
-        _, params = cgi.parse_header(self.headers.get("content-disposition"))
+        _, params = cgi.parse_header(self.headers.get("content-disposition", ""))
         filename = params.get("filename")
         if filename:
             root, _ext = os.path.splitext(filename)
@@ -133,8 +134,12 @@ class Scraper(CronAddOn):
                     # only download if haven't seen before
                     print("found new docs", full_href)
                     docs.append(Document(full_href, headers))
+                    self.total_new_doc_count += 1
                     self.site_data[full_href] = {"first_seen": now}
                 self.site_data[full_href]["last_seen"] = now
+                # stop looking for new documents if we hit the max
+                if self.total_new_doc_count >= MAX_NEW_DOCS:
+                    break
             elif depth < self.data["crawl_depth"]:
                 # if not a document, check to see if we should crawl
                 if self.check_crawl(full_href, content_type):
@@ -157,6 +162,9 @@ class Scraper(CronAddOn):
             if not self.data["dry_run"]:
                 resp = self.client.post("documents/", json=doc_group)
 
+        if self.total_new_doc_count >= MAX_NEW_DOCS:
+            return
+
         # recurse on sites we want to crawl
         for site_ in sites:
             self.scrape(site_, depth=depth + 1)
@@ -165,7 +173,9 @@ class Scraper(CronAddOn):
         """Send notifications via slack and email"""
         self.send_mail(subject, message)
         if SLACK_WEBHOOK:
-            requests_retry_session().post(SLACK_WEBHOOK, json={"text": f"{subject}\n\n{message}"})
+            requests_retry_session().post(
+                SLACK_WEBHOOK, json={"text": f"{subject}\n\n{message}"}
+            )
 
     def send_scrape_message(self):
         msg = []
@@ -210,6 +220,7 @@ class Scraper(CronAddOn):
         self.seen = set()
         self.new_docs = {}
         self.content_types = [mimetypes.types_map[f] for f in self.data["filetypes"]]
+        self.total_new_doc_count = 0
 
         self.site_data = self.load_data()
         self.scrape(self.data["site"])
