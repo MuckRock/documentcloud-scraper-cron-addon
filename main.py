@@ -16,6 +16,7 @@ from documentcloud.constants import BULK_LIMIT
 from documentcloud.toolbox import grouper
 
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
+DOC_CUTOFF = 10
 
 
 def title(url):
@@ -124,7 +125,9 @@ class Scraper(CronAddOn):
         for site, docs in self.new_docs.items():
             if docs:
                 msg.append(f"\n\nFound {len(docs)} new documents from {site}\n")
-                msg.extend(docs)
+                msg.extend(docs[:DOC_CUTOFF])
+                if len(docs) > DOC_CUTOFF:
+                    msg.append(f"Plus {len(docs) - DOC_CUTOFF} more documents")
         if msg:
             self.send_notification(
                 f"Found new documents from {self.data['site']}", "\n".join(msg)
@@ -143,7 +146,11 @@ class Scraper(CronAddOn):
                     f"Documents containing {keyword} found at {datetime.now()} "
                     f"from {self.data['site']}"
                 ]
-                message.extend([f"{d.title} - {d.canonical_url}" for d in documents])
+                message.extend(
+                    [f"{d.title} - {d.canonical_url}" for d in documents[:DOC_CUTOFF]]
+                )
+                if len(documents) > DOC_CUTOFF:
+                    message.append(f"Plus {len(documents) - DOC_CUTOFF} more documents")
                 self.send_notification(
                     f"New documents found for: {keyword} from {self.data['site']}",
                     "\n".join(message),
