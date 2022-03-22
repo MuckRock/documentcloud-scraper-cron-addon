@@ -76,9 +76,14 @@ Now it's time to point the scraper at the content we want to grab. From your rep
 
 ![Screen Shot 2022-03-22 at 9 16 37 AM](https://user-images.githubusercontent.com/136939/159490436-e5351a6c-c912-466d-a03d-1682c1c41c2b.png)
 
-Under "properties" in this text, look for site and put the URL you want scraped after "default:". Similarly, put the project you want documents stored in after the "default:" under "project:" 
+Under `properties` in this text, look for `site` and put the URL you want scraped after `default:`
 
-![Screen Shot 2022-03-22 at 9 21 30 AM](https://user-images.githubusercontent.com/136939/159491268-61293a60-c3f5-4db5-bac6-66124fa404ab.png)
+<img width="732" alt="Screen Shot 2022-03-22 at 10 42 28 AM" src="https://user-images.githubusercontent.com/136939/159508492-0abeb224-82b1-4438-b424-179107fe70c3.png">
+
+Similarly, put the project you want documents stored in after the `default:` under `project:` 
+
+<img width="711" alt="Screen Shot 2022-03-22 at 10 42 32 AM" src="https://user-images.githubusercontent.com/136939/159508431-677f1a6b-c070-4d7f-ae60-b786b4a02497.png">
+
 
 To get alerts for when specific keywords are mentioned in the text, put those keywords under the "default" areas in the relevant section:
 
