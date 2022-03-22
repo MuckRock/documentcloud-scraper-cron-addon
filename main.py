@@ -10,6 +10,7 @@ import os
 import urllib.parse as urlparse
 from datetime import datetime
 
+import requests
 from bs4 import BeautifulSoup
 from documentcloud.addon import CronAddOn
 from documentcloud.constants import BULK_LIMIT
@@ -20,21 +21,45 @@ SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK")
 DOC_CUTOFF = 10
 
 
-def title(url):
-    """Get the base name of the file to use as a title"""
-    parsed_url = urlparse.urlparse(url)
-    basename = os.path.basename(parsed_url.path)
-    root, _ext = os.path.splitext(basename)
-    return root
+class Document:
+    """Class to hold information about scraped documents"""
 
+    def __init__(self, url, headers):
+        self.url = url
+        self.headers = headers
 
-# https://stackoverflow.com/questions/33049729/how-to-handle-links-containing-space-between-them-in-python
-def url_fix(s):
-    """Fixes quoting of characters in file names to use with requests"""
-    scheme, netloc, path, qs, anchor = urlparse.urlsplit(s)
-    path = urlparse.quote(path, "/%")
-    qs = urlparse.quote_plus(qs, ":&=")
-    return urlparse.urlunsplit((scheme, netloc, path, qs, anchor))
+    @property
+    def title(self):
+        title = self.title_from_headers()
+        if title:
+            return title
+        return self.title_from_url()
+
+    def title_from_headers(self):
+        _, params = cgi.parse_header(self.headers.get("content-disposition"))
+        filename = params.get("filename")
+        if filename:
+            root, _ext = os.path.splitext(filename)
+            return root
+
+        return ""
+
+    def title_from_url(self):
+        """Get the base name of the file to use as a title"""
+        parsed_url = urlparse.urlparse(self.url)
+        basename = os.path.basename(parsed_url.path)
+        root, _ext = os.path.splitext(basename)
+        return root
+
+    # https://stackoverflow.com/questions/33049729/
+    # how-to-handle-links-containing-space-between-them-in-python
+    @property
+    def fixed_url(self):
+        """Fixes quoting of characters in file names to use with requests"""
+        scheme, netloc, path, qs, anchor = urlparse.urlsplit(self.url)
+        path = urlparse.quote(path, "/%")
+        qs = urlparse.quote_plus(qs, ":&=")
+        return urlparse.urlunsplit((scheme, netloc, path, qs, anchor))
 
 
 class Scraper(CronAddOn):
@@ -65,16 +90,24 @@ class Scraper(CronAddOn):
         return content_type == "text/html"
 
     @sleep_and_retry
-    @limits(calls=2, period=1)
-    def get_content_type(self, url):
+    @limits(calls=5, period=1)
+    def get_headers(self, url):
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if scheme not in ["http", "https"]:
+            return {}
+        try:
+            resp = requests_retry_session().head(url, allow_redirects=True)
+        except requests.exceptions.RequestException:
+            return {}
+        return resp.headers
+
+    def get_content_type(self, headers):
+        if "Content-Type" not in headers:
             return ""
-        resp = requests_retry_session().head(url, allow_redirects=True)
-        return cgi.parse_header(resp.headers["Content-Type"])[0]
+        return cgi.parse_header(headers["Content-Type"])[0]
 
     @sleep_and_retry
-    @limits(calls=2, period=1)
+    @limits(calls=5, period=1)
     def scrape(self, site, depth=0):
         """Scrape the site for new documents"""
         print(f"Scraping {site} (depth {depth})")
@@ -89,7 +122,8 @@ class Scraper(CronAddOn):
             if href is None:
                 continue
             full_href = urlparse.urljoin(resp.url, href)
-            content_type = self.get_content_type(full_href)
+            headers = self.get_headers(full_href)
+            content_type = self.get_content_type(headers)
             print("link", href, content_type)
             # if this is a document type, store it
             if content_type in self.content_types:
@@ -98,7 +132,7 @@ class Scraper(CronAddOn):
                 if full_href not in self.site_data:
                     # only download if haven't seen before
                     print("found new docs", full_href)
-                    docs.append(full_href)
+                    docs.append(Document(full_href, headers))
                     self.site_data[full_href] = {"first_seen": now}
                 self.site_data[full_href]["last_seen"] = now
             elif depth < self.data["crawl_depth"]:
@@ -112,9 +146,9 @@ class Scraper(CronAddOn):
             doc_group = [d for d in doc_group if d]
             doc_group = [
                 {
-                    "file_url": url_fix(d),
+                    "file_url": d.fixed_url,
                     "source": f"Scraped from {site}",
-                    "title": title(d),
+                    "title": d.title,
                     "projects": [self.data["project"]],
                 }
                 for d in doc_group
@@ -138,7 +172,7 @@ class Scraper(CronAddOn):
         for site, docs in self.new_docs.items():
             if docs:
                 msg.append(f"\n\nFound {len(docs)} new documents from {site}\n")
-                msg.extend(docs[:DOC_CUTOFF])
+                msg.extend(d.fixed_url for d in docs[:DOC_CUTOFF])
                 if len(docs) > DOC_CUTOFF:
                     msg.append(f"Plus {len(docs) - DOC_CUTOFF} more documents")
         if msg:
