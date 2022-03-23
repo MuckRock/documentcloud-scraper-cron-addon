@@ -37,7 +37,9 @@ class Document:
         return self.title_from_url()
 
     def title_from_headers(self):
-        _, params = cgi.parse_header(self.headers.get("content-disposition", ""))
+        if self.headers["content-disposition"] is None:
+            return ""
+        _, params = cgi.parse_header(self.headers["content-disposition"])
         filename = params.get("filename")
         if filename:
             root, _ext = os.path.splitext(filename)
@@ -54,9 +56,9 @@ class Document:
 
     @property
     def extension(self):
-        if "Content-Type" not in self.headers:
+        if self.headers["content-type"] is None:
             return "pdf"
-        content_type = cgi.parse_header(self.headers["Content-Type"])[0]
+        content_type = cgi.parse_header(self.headers["content-type"])[0]
         extension = mimetypes.guess_extension(content_type)
         if extension:
             return extension.strip(".")
@@ -103,6 +105,7 @@ class Scraper(CronAddOn):
     @sleep_and_retry
     @limits(calls=5, period=1)
     def get_headers(self, url):
+        print("getting headers", url)
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if scheme not in ["http", "https"]:
             return {}
@@ -110,12 +113,15 @@ class Scraper(CronAddOn):
             resp = requests_retry_session().head(url, allow_redirects=True)
         except requests.exceptions.RequestException:
             return {}
-        return resp.headers
+        return {
+            "content-type": resp.headers.get("content-type"),
+            "content-disposition": resp.headers.get("content-disposition"),
+        }
 
     def get_content_type(self, headers):
-        if "Content-Type" not in headers:
+        if headers["content-type"] is None:
             return ""
-        return cgi.parse_header(headers["Content-Type"])[0]
+        return cgi.parse_header(headers["content-type"])[0]
 
     @sleep_and_retry
     @limits(calls=5, period=1)
@@ -133,20 +139,30 @@ class Scraper(CronAddOn):
             if href is None:
                 continue
             full_href = urlparse.urljoin(resp.url, href)
-            headers = self.get_headers(full_href)
+
+            if full_href not in self.site_data:
+                headers = self.get_headers(full_href)
+                self.site_data[full_href] = {"headers": headers, "first_seen": now}
+                new = True
+            else:
+                headers = self.site_data[full_href].get("headers")
+                if not headers:
+                    headers = self.get_headers(full_href)
+                    self.site_data[full_href]["headers"] = headers
+                new = False
+            self.site_data[full_href]["last_seen"] = now
+
             content_type = self.get_content_type(headers)
             print("link", href, content_type)
             # if this is a document type, store it
             if content_type in self.content_types:
                 # track when we first and last saw this document
                 # on this page
-                if full_href not in self.site_data:
+                if new:
                     # only download if haven't seen before
                     print("found new docs", full_href)
                     docs.append(Document(full_href, headers))
                     self.total_new_doc_count += 1
-                    self.site_data[full_href] = {"first_seen": now}
-                self.site_data[full_href]["last_seen"] = now
                 # stop looking for new documents if we hit the max
                 if self.total_new_doc_count >= MAX_NEW_DOCS:
                     break
