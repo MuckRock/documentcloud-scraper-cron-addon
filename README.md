@@ -107,7 +107,7 @@ data.json is where the scraper stores what it has and hasn't seen before. Since 
 
 Click "Confirm changes."
 
-### 7) Run the scraper
+### 8) Run the scraper
 
 Now it's time to run the scraper for the first time. At the top of the repository (generally, this page) click "Actions" then "Run Add-On" then "Run Workflow" twice:
 
