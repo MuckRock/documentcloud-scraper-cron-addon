@@ -68,7 +68,11 @@ slack.com/apps/A0F7XDUAZ-incoming-webhooks?tab=more_info) and click "Add to Slac
 
 ![Screen Shot 2022-03-22 at 9 09 15 AM](https://user-images.githubusercontent.com/136939/159489230-dfab5dfc-c9d7-4c4f-a00f-974f5c9b55a7.png)
 
-You'll get a URL that looks like `https://hooks.slack.com/services/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` and that's what you'll want to store in the `SLACK_WEBHOOK` secret.
+You'll get a URL that looks like this:
+
+<img width="721" alt="Screen Shot 2022-03-23 at 9 56 26 AM" src="https://user-images.githubusercontent.com/136939/159716228-0fa81b6e-ec4f-49f4-a895-91a88f62d671.png">
+
+That's what you'll want to store in the `SLACK_WEBHOOK` secret.
 
 ### 6) Configure the scraper and alerts
 
