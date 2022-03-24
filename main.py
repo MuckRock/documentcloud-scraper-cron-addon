@@ -108,11 +108,11 @@ class Scraper(CronAddOn):
         print("getting headers", url)
         scheme, netloc, path, qs, anchor = urlparse.urlsplit(url)
         if scheme not in ["http", "https"]:
-            return {}
+            return {"content-type": None, "content-disposition": None}
         try:
             resp = requests_retry_session().head(url, allow_redirects=True)
         except requests.exceptions.RequestException:
-            return {}
+            return {"content-type": None, "content-disposition": None}
         return {
             "content-type": resp.headers.get("content-type"),
             "content-disposition": resp.headers.get("content-disposition"),
