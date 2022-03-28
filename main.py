@@ -110,7 +110,7 @@ class Scraper(CronAddOn):
         if scheme not in ["http", "https"]:
             return {"content-type": None, "content-disposition": None}
         try:
-            resp = requests_retry_session().head(url, allow_redirects=True)
+            resp = requests_retry_session().head(url, allow_redirects=True, timeout=10)
         except requests.exceptions.RequestException:
             return {"content-type": None, "content-disposition": None}
         return {
