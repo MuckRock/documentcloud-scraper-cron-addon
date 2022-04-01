@@ -182,6 +182,7 @@ class Scraper(CronAddOn):
                     "title": d.title,
                     "projects": [self.data["project"]],
                     "original_extension": d.extension,
+                    "access": "public",
                 }
                 for d in doc_group
             ]
